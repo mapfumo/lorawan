@@ -1,0 +1,27 @@
+# Rust build artifacts
+firmware/lora-1/target/
+firmware/lora-2/target/
+firmware/lora-phy-patched/target/
+firmware/lorawan-device-patched/target/
+
+# InfluxDB data
+influxdb/
+
+# Grafana data
+grafana/data/
+
+# Mosquitto persistence
+mosquitto/data/
+mosquitto/log/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+CLAUDE.md
+.claude/

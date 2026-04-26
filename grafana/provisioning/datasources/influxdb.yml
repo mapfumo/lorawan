@@ -1,0 +1,16 @@
+apiVersion: 1
+
+datasources:
+  - name: Unified InfluxDB
+    type: influxdb
+    uid: unified-influxdb
+    access: proxy
+    url: http://influxdb:8086
+    jsonData:
+      version: Flux
+      organization: my-org
+      defaultBucket: sensors
+    secureJsonData:
+      token: my-super-secret-auth-token
+    isDefault: true
+    editable: true
