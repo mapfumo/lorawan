@@ -170,6 +170,68 @@ Our boards at +4–+7 dB SNR have ~24–27 dB of margin at SF12 — plenty for A
 
 **For field testing:** walk away from the gateway and watch RSSI drop and SNR fall. The ADR margin tells you how far you can go before packet loss. If SNR hits the minimum for the current SF, you'll see lost packets before the network server drops to a higher SF.
 
+## Field Testing Methodology
+
+### SNR vs DR — They Are Not the Same Thing
+
+A common point of confusion when reading the lora-2 OLED during a walk test:
+
+**DR0** is not a signal quality measurement. It is the modulation setting — SF12 + 125 kHz bandwidth. It tells you *how* the radio is transmitting, not how well the signal arrived. Think of it as the gear the radio is in. DR steps up (DR1, DR2...) only when ADR receives a `LinkADRReq` downlink from the gateway.
+
+**SNR** is signal quality — how far above the noise floor the received signal sits. This is the number to watch during a range test.
+
+They are unrelated. DR0 simply means ADR has not yet stepped up the modulation.
+
+### Two Different SNR Values — LCD vs Grafana
+
+You will notice the LCD and Grafana report different SNR values for the same board. This is not a bug — they are measuring two completely different radio paths:
+
+| | LCD (e.g. +4 dB) | Grafana (e.g. +11 dB) |
+|--|-----------------|----------------------|
+| Measured by | Node receiver | Gateway receiver |
+| Which signal | Gateway → Node (downlink ACK) | Node → Gateway (uplink) |
+| Frequency | 923–928 MHz (RX1) | 915–928 MHz |
+| Bandwidth | 500 kHz (AU915 RX1) | 125 kHz |
+
+The gateway hears the node better than the node hears the gateway because:
+
+- The gateway has a superior antenna, low-noise amplifier, and is typically mounted high
+- AU915 RX1 downlinks use 500 kHz bandwidth — wider bandwidth means more noise, lower SNR at the node
+- The node's receiver is a modest embedded radio, not a base-station-grade front end
+
+Both readings are valid. Use the **LCD SNR for field testing** (it tells you what the node is experiencing). Use **Grafana SNR for post-analysis** (it tells you what the gateway received).
+
+### Recording a Walk Test
+
+You do not need to manually record RSSI, SNR, or DR during the test. InfluxDB timestamps every uplink to the second. All signal data is already there.
+
+Your field notes only need **location and time**:
+
+```text
+09:14  Left gateway (0 m)
+09:22  End of driveway (~200 m)
+09:31  Front paddock gate (~500 m)
+09:45  Creek crossing (~900 m)
+09:58  OLED shows Connecting... — coverage edge
+10:06  Signal resumed walking back
+```
+
+Back at the desk, open Grafana and overlay your timestamps against:
+
+- **RSSI** — shows signal degradation over the walk
+- **SNR** — shows when you approached the decoding limit
+- **Frame count** — gaps reveal exactly which uplinks were lost and at what time
+
+lora-2 sends a confirmed uplink every ~10s, so the Grafana timeline has enough resolution to match waypoint times precisely. The frame count gap tells you the exact moment and location of first packet loss.
+
+### What the Numbers Mean in the Field
+
+**Watch SNR, not just RSSI.** RSSI can read −100 dBm while SNR is still healthy. Conversely, SNR can collapse even when RSSI looks reasonable in a noisy RF environment.
+
+At DR0 (SF12) the decoding limit is **−20 dB SNR**. In practice expect packet loss to begin around **−15 dB SNR** due to multipath and fading. When the LCD SNR approaches 0 dB and keeps falling, you are getting close to the edge.
+
+**Coverage boundary** = where `Connecting...` first appears consistently on the OLED. Mark the time, walk back, and let the board rejoin (16–60s backoff). The TX counter will resume from where it left off — session keys survive a rejoin.
+
 ## Rust + Embassy on Bare-Metal STM32
 
 ### Why Rust
