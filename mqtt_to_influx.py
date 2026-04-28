@@ -20,7 +20,7 @@ import urllib.error
 # =========================
 # Configuration
 # =========================
-GATEWAY_MQTT_HOST = "10.10.10.254"
+GATEWAY_MQTT_HOST = "192.168.0.254"
 GATEWAY_MQTT_PORT = 1883
 
 INFLUXDB_HOST = "influxdb"

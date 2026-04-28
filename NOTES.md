@@ -22,9 +22,28 @@ probe-rs run --chip STM32WL55JCIx --probe 0483:374e:003E00463234510A33353533 tar
 
 ## Gateway
 
-- RAK7268V2 at `10.10.10.254`
+- RAK7268V2 at `192.168.0.254` (WiFi network — changed 2026-04-28, was `10.10.10.254` on local Ethernet)
 - MQTT broker on port 1883
 - AU915 sub-band 1
+
+### Changing the Gateway Network
+
+If the gateway IP changes (e.g. moving from a dedicated Ethernet segment to the main WiFi LAN), update **all** of the following — the firmware does not hardcode the gateway IP (LoRaWAN is radio, not IP), but the backend does:
+
+| File | Location | What to change |
+|---|---|---|
+| `mqtt_to_influx.py` | line 23 `GATEWAY_MQTT_HOST` | New gateway IP |
+| `NOTES.md` | Gateway section (above) | Update for reference |
+| `banner.svg` | Bottom label row | Update the `10.x.x.x` label if you regenerate |
+
+After changing `mqtt_to_influx.py`, restart the bridge:
+
+```bash
+docker compose restart mqtt-bridge
+docker compose logs -f mqtt-bridge   # confirm "Connected to MQTT broker at <new-ip>:1883"
+```
+
+The Grafana dashboard and InfluxDB are unaffected — they talk to the bridge container, not directly to the gateway.
 
 ## MQTT Topics (RAK built-in server)
 
@@ -231,6 +250,64 @@ lora-2 sends a confirmed uplink every ~10s, so the Grafana timeline has enough r
 At DR0 (SF12) the decoding limit is **−20 dB SNR**. In practice expect packet loss to begin around **−15 dB SNR** due to multipath and fading. When the LCD SNR approaches 0 dB and keeps falling, you are getting close to the edge.
 
 **Coverage boundary** = where `Connecting...` first appears consistently on the OLED. Mark the time, walk back, and let the board rejoin (16–60s backoff). The TX counter will resume from where it left off — session keys survive a rejoin.
+
+## Walk Test — 2026-04-28, Suburban Brisbane
+
+**Setup:**
+
+- Gateway: RAK7268V2 mounted on rooftop, altitude 85 m, GPS −27.425958°, 153.051761°
+- Node: lora-2 (range probe), AU915 DR0/SF12, confirmed uplink every ~10 s
+- Environment: suburban residential, hilly terrain
+- Signal data source: InfluxDB (246 records captured, gateway SNR)
+
+### Waypoint Results
+
+| Waypoint | Time | Distance | Altitude | RSSI | SNR (GW) | Notes |
+|---|---|---|---|---|---|---|
+| WP1 Home/GW | 09:40 | 0 m | 63 m | −17 dBm | +13.8 dB | Baseline — gateway on roof above |
+| WP2 | 10:08 | 63 m | 77 m | −70 dBm | +9.5 dB | Still good |
+| WP3 Church | 10:15 | 256 m | 89 m | −89 dBm | +4.2 dB | Highest elevation point — near GW roof level |
+| WP4 | 10:22 | 380 m | 87 m | −102 dBm | −6.5 dB | SNR crossed 0 dB — marginal |
+| WP5 | 10:26 | 466 m | 82 m | −103 dBm | −19.5 dB | **At SF12 decode limit** |
+| WP6 | 10:31 | 593 m | 75 m | −103 dBm | −20.8 dB | **Below SF12 limit** — packet loss |
+| WP7 | 10:37 | 716 m | 48 m | −103 dBm | −19.2 dB | **Lowest altitude** — worst reception |
+| WP8 | 10:42 | 743 m | 64 m | −96 dBm | +0.5 dB | Climbed 16 m → signal recovered |
+| WP9 | 10:50 | 921 m | 77 m | −103 dBm | −13.2 dB | Furthest point — still receiving |
+
+### Packet Gap Analysis
+
+Gaps > 30 s indicate missed uplinks (node retrying or out of coverage):
+
+| Time (AEST) | Gap | RSSI before gap | SNR before gap | Interpretation |
+|---|---|---|---|---|
+| 09:50 → 09:55 | 307 s | −18 dBm | +14.2 dB | Gateway being moved to roof |
+| 10:15 → 10:17 | 112 s | −90 dBm | +4.2 dB | Church — momentary obstruction |
+| 10:27 → 10:30 | 158 s | −104 dBm | −11.5 dB | Approaching coverage edge |
+| 10:30 → 10:36 | 354 s | −103 dBm | −20.8 dB | Below SF12 limit — heavy loss |
+| 10:36 → 10:40 | 242 s | −103 dBm | −19.2 dB | Downhill, terrain masking |
+| 10:50 → 10:54 | 254 s | −100 dBm | −3.0 dB | Furthest point, marginal |
+
+### Key Finding: Elevation Dominates Over Distance
+
+The dominant variable was not distance — it was altitude relative to the gateway.
+
+**WP3 (Church, 256 m away, 89 m altitude):** SNR +4.2 dB — strong signal because the node was at roughly the same elevation as the gateway roof. Near line-of-sight path.
+
+**WP7 (716 m away, 48 m altitude):** SNR −19.2 dB, 354 s gap — the node had dropped 37 m below the gateway. Terrain between them clipped the Fresnel zone, collapsing the link despite SF12's theoretical −20 dB SNR budget.
+
+**WP8 (743 m away, 64 m altitude):** SNR +0.5 dB — climbing 16 m from WP7 recovered the link even though the node was now *further* from the gateway. Line-of-sight restored.
+
+**Fresnel zone:** The radio wave between transmitter and receiver occupies an elliptical volume (the Fresnel zone), not a laser-thin line. At 700 m range on 915 MHz, the first Fresnel zone radius is ~14 m at the midpoint. When terrain or buildings intrude into this zone, signal degrades sharply — even if the geometric line-of-sight appears clear.
+
+**Practical implication for agriculture:** Gateway placement on the highest available point (silo, water tower, ridge line) is more important than central placement. An extra 10–20 m of gateway elevation can add kilometres of reliable coverage across hilly terrain.
+
+### Summary
+
+- **Reliable range (SNR > 0 dB):** ~350–400 m in hilly suburban terrain
+- **Marginal range (packets received, gaps present):** 400–950 m
+- **Maximum observed range:** 921 m (suburban, hilly, SF12)
+- **Coverage edge:** SNR −20 dB hit at ~466–593 m on downhill path; recovered at 743 m on uphill return
+- **Open rural equivalent:** Expect 5–15 km with gateway elevated on a structure
 
 ## Rust + Embassy on Bare-Metal STM32
 

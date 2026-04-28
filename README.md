@@ -614,28 +614,35 @@ The gateway needs ~20 uplinks of SNR history before it sends a `LinkADRReq`. At 
 
 ---
 
-### Sample Results Table
+### Real-World Results — 2026-04-28, Suburban Brisbane
 
-Record at each waypoint:
+Gateway mounted on rooftop (85 m altitude). lora-2 walked outward. All signal data from InfluxDB — 246 uplinks captured. See [NOTES.md](NOTES.md) for full analysis.
 
-| Location | Est. distance | RSSI | SNR | DR | Packet loss |
-|----------|--------------|------|-----|----|-------------|
-| Gateway (baseline) | 0 m | −87 dBm | +6 dB | DR0 | 0% |
-| Street corner | ~150 m | | | | |
-| Park edge | ~400 m | | | | |
-| End of street | ~800 m | | | | |
+| Waypoint | Distance | Altitude | RSSI | SNR | Status |
+|----------|----------|----------|------|-----|--------|
+| Home / Gateway | 0 m | 63 m | −17 dBm | +13.8 dB | Excellent |
+| WP2 | 63 m | 77 m | −70 dBm | +9.5 dB | Good |
+| Local church | 256 m | 89 m | −89 dBm | +4.2 dB | Good — near GW elevation |
+| WP4 | 380 m | 87 m | −102 dBm | −6.5 dB | Marginal |
+| WP5 | 466 m | 82 m | −103 dBm | −19.5 dB | **At SF12 limit** |
+| WP6 | 593 m | 75 m | −103 dBm | −20.8 dB | **Packet loss** |
+| WP7 (downhill) | 716 m | 48 m | −103 dBm | −19.2 dB | **Terrain masking** |
+| WP8 (uphill) | 743 m | 64 m | −96 dBm | +0.5 dB | Recovered (+16 m climb) |
+| WP9 | 921 m | 77 m | −103 dBm | −13.2 dB | Marginal — furthest point |
+
+**Key finding:** elevation relative to the gateway dominated over raw distance. WP8 (743 m away) had better signal than WP7 (716 m away) purely because it was 16 m higher — line-of-sight restored after a downhill dip blocked the Fresnel zone. In open rural terrain, expect 5–15 km from an elevated gateway.
 
 ---
 
 ### Tips
 
-- **Elevation matters** — LoRa is line-of-sight biased. Holding the board higher (or testing from an upper floor) can add hundreds of metres of range.
+- **Elevation beats distance** — gateway placement on the highest available structure (silo, water tower, ridge) is the single biggest range multiplier. This was confirmed directly in field testing: climbing 16 m recovered the link at greater distance.
 - **Buildings attenuate heavily** — a single brick wall can cost 10–15 dB. Go outdoors for true range figures.
-- **Walk perpendicular to obstructions**, not parallel — you'll find real nulls and reflections that a straight-line walk misses.
-- **lora-1 runs simultaneously** — if you carry both boards, lora-1 gives you a second data stream to cross-check against in Grafana.
-- **AU915 SF12 theoretical range** in open suburban terrain: 2–5 km. Indoor or dense urban: significantly less.
+- **Record GPS + time only** — InfluxDB stores every uplink with a timestamp. Overlay your waypoints on the Grafana timeline after the walk; no need to manually log signal values in the field.
+- **lora-1 runs simultaneously** — carry both boards for a second data stream to cross-check in Grafana.
+- **AU915 SF12 theoretical range** in open rural terrain: 5–15 km with elevated gateway. Dense suburban: 400–900 m.
 
-See [NOTES.md](NOTES.md) for the full SF/DR/SNR theory and ADR internals.
+See [NOTES.md](NOTES.md) for the full waypoint table, gap analysis, and Fresnel zone explanation.
 
 ---
 
